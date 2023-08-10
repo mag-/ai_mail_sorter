@@ -10,7 +10,7 @@ from transformers import pipeline
 classifier = None
 
 
-def classify_email(email_content, labels):
+def classify_email(email_content, labels, prefix=None):
     global classifier
     if not classifier:
         classifier = pipeline(
@@ -18,10 +18,17 @@ def classify_email(email_content, labels):
             model="MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7",
             device="cpu",
         )
-    output = classifier(email_content, labels, multi_label=False)
+    if not prefix:
+        prefix = ""
+    modified_labels = [
+        label[len(prefix) :] if label.startswith(prefix) else label for label in labels
+    ]
+    output = classifier(email_content, modified_labels, multi_label=False)
     label = output["labels"][0]
     if label == "other":
         return "INBOX"
+    if prefix + label in labels:
+        return prefix + label
     return label
 
 
@@ -49,6 +56,22 @@ def extract_text_from_part(part):
     return ""
 
 
+def move_email(mail, uid, source_folder, destination_folder):
+    # Select the source folder
+    mail.select(source_folder)
+
+    # Copy the email to the destination folder
+    result, _ = mail.uid("COPY", uid, destination_folder)
+    if result != "OK":
+        raise Exception(f"Failed to copy email UID {uid} to {destination_folder}")
+
+    # Mark the original email for deletion
+    mail.uid("STORE", uid, "+FLAGS", "\\Deleted")
+
+    # Expunge (permanently remove) emails marked for deletion
+    mail.expunge()
+
+
 def parse_mailbox_name(mailbox_info):
     # This function extracts the mailbox name from the mailbox info string.
     # It assumes the format: *(attributes) "delimiter" "mailbox_name"*
@@ -64,7 +87,7 @@ def parse_mailbox_name(mailbox_info):
     return mailbox_info[start_index:end_index]
 
 
-def get_mailboxes(mail, only_inbox=True):
+def get_mailboxes(mail, prefix):
     # Fetch mailboxes
     response, mailbox_list = mail.list()
     mailboxes = []
@@ -85,7 +108,7 @@ def get_mailboxes(mail, only_inbox=True):
             or "flagged" in m
         ):
             continue
-        if only_inbox and not m.startswith("inbox"):
+        if prefix and not mailbox_name.lower().startswith(prefix.lower()):
             continue
         mailboxes.append(mailbox_name)
 
@@ -99,7 +122,7 @@ def main(args):
     mail = imaplib.IMAP4_SSL(args.hostname)
     mail.login(args.username, args.password)
 
-    labels = get_mailboxes(mail, args.only_inbox) + ["other"]
+    labels = get_mailboxes(mail, args.prefix) + ["other"]
 
     mail.select("inbox")
     status, uid_list = mail.uid("search", None, "ALL")
@@ -124,15 +147,11 @@ def main(args):
             content = parsed_email.get_payload(decode=True).decode(
                 "utf-8", errors="ignore"
             )
-        target_folder = classify_email(content, labels)
+        target_folder = classify_email(content, labels, args.prefix)
         if target_folder == "INBOX":
             continue
         print(f"Moving message to {target_folder}")
-        mail.uid("store", uid, "+FLAGS", "\\Deleted")
-        mail.expunge()
-        mail.append(
-            target_folder, "", imaplib.Time2Internaldate(time.time()), raw_email
-        )
+        move_email(mail, uid, "INBOX", target_folder)
 
     mail.logout()
 
@@ -149,9 +168,9 @@ if __name__ == "__main__":
         help="IMAP server hostname (default: localhost)",
     )
     parser.add_argument(
-        "--only-inbox",
-        action="store_true",
-        help="Only use folders under INBOX as labels",
+        "--prefix",
+        default="",
+        help="Only use folders with the provided prefix as labels",
     )
 
     args = parser.parse_args()
