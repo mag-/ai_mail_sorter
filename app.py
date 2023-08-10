@@ -22,7 +22,31 @@ def classify_email(email_content, labels):
     label = output["labels"][0]
     if label == "other":
         return "INBOX"
-    return f"INBOX.{label}/" if "INBOX." in labels else label
+    return label
+
+
+def extract_text_from_part(part):
+    content_type = part.get_content_type()
+    content_disposition = str(part.get("Content-Disposition"))
+
+    # Check for attachments
+    if "attachment" in content_disposition:
+        return ""
+
+    # Handle text types
+    if content_type == "text/plain":
+        return part.get_payload(decode=True).decode("utf-8", errors="ignore")
+    elif content_type == "text/html":
+        return part.get_payload(decode=True).decode("utf-8", errors="ignore")
+
+    # Handle multipart types
+    if part.is_multipart():
+        text_content = ""
+        for subpart in part.get_payload():
+            text_content += extract_text_from_part(subpart)
+        return text_content
+
+    return ""
 
 
 def get_mailboxes(mail, only_inbox=True):
@@ -44,7 +68,7 @@ def get_mailboxes(mail, only_inbox=True):
             or "flagged" in m
         ):
             continue
-        if only_inbox and not mailbox_name.startswith("INBOX."):
+        if only_inbox and not mailbox_name.lower().startswith("inbox"):
             continue
         mailboxes.append(mailbox_name)
     print(f"Found {len(mailboxes)} mailboxes: {mailboxes}")
@@ -69,22 +93,19 @@ def main(args):
     uids = uid_list[0].split()
 
     for uid in uids:
-        print(uid)
+        print(f"Processing message {uid}")
         status, msg_data = mail.uid("fetch", uid, "(RFC822)")
         raw_email = msg_data[0][1]
         parsed_email = email.message_from_bytes(raw_email)
 
+        content = ""
+
         if parsed_email.is_multipart():
-            content = (
-                parsed_email.get_payload(0)
-                .get_payload(decode=True)
-                .decode("utf-8", errors="ignore")
-            )
-        else:
+            content = extract_text_from_part(parsed_email)
+        if content == "":
             content = parsed_email.get_payload(decode=True).decode(
                 "utf-8", errors="ignore"
             )
-
         target_folder = classify_email(content, labels)
         if target_folder == "INBOX":
             continue
