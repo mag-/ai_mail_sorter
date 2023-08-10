@@ -56,7 +56,13 @@ def extract_text_from_part(part):
     return ""
 
 
-def move_email(mail, uid, source_folder, destination_folder):
+def move_email(mail, uid, source_folder, destination_folder, dry_run=False):
+    if dry_run:
+        print(
+            f"[DRY RUN] Would move email with UID {uid} from {source_folder} to {destination_folder}"
+        )
+        return
+
     # Select the source folder
     mail.select(source_folder)
 
@@ -138,9 +144,9 @@ def main(args):
         status, msg_data = mail.uid("fetch", uid, "(RFC822)")
         raw_email = msg_data[0][1]
         parsed_email = email.message_from_bytes(raw_email)
-
-        content = ""
-
+        if args.dry_run:
+            print(f"Subject: {parsed_email['subject']}")
+        content = parsed_email["subject"]
         if parsed_email.is_multipart():
             content = extract_text_from_part(parsed_email)
         if content == "":
@@ -151,7 +157,7 @@ def main(args):
         if target_folder == "INBOX":
             continue
         print(f"Moving message to {target_folder}")
-        move_email(mail, uid, "INBOX", target_folder)
+        move_email(mail, uid, "INBOX", target_folder, args.dry_run)
 
     mail.logout()
 
@@ -171,6 +177,11 @@ if __name__ == "__main__":
         "--prefix",
         default="",
         help="Only use folders with the provided prefix as labels",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform a dry run without actually moving emails.",
     )
 
     args = parser.parse_args()
