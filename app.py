@@ -7,6 +7,7 @@ import os
 import time
 from getpass import getpass
 from transformers import pipeline
+import torch
 
 classifier = None
 
@@ -14,10 +15,19 @@ classifier = None
 def classify_email(email_content, labels, prefix=None):
     global classifier
     if not classifier:
+        # Check if CUDA (NVIDIA GPU) is available
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif (
+            torch.backends.mps.is_available()
+        ):  # Check for Metal Performance Shaders (MPS) for Apple devices (available in newer torch versions)
+            device = "mps"
+        else:
+            device = "cpu"
         classifier = pipeline(
             "zero-shot-classification",
             model="MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7",
-            device="cpu",
+            device=device,
         )
     if not prefix:
         prefix = ""
