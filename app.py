@@ -49,13 +49,30 @@ def extract_text_from_part(part):
     return ""
 
 
+def parse_mailbox_name(mailbox_info):
+    # This function extracts the mailbox name from the mailbox info string.
+    # It assumes the format: *(attributes) "delimiter" "mailbox_name"*
+    # and extracts the mailbox_name which is the last quoted string.
+
+    quote_indices = [pos for pos, char in enumerate(mailbox_info) if char == '"']
+    if len(quote_indices) < 2:
+        return None
+
+    # Extract the mailbox name from the last pair of quotes
+    start_index = quote_indices[-2] + 1
+    end_index = quote_indices[-1]
+    return mailbox_info[start_index:end_index]
+
+
 def get_mailboxes(mail, only_inbox=True):
     # Fetch mailboxes
     response, mailbox_list = mail.list()
     mailboxes = []
     for mailbox in mailbox_list:
-        mailbox_info = mailbox.decode().split()
-        mailbox_name = mailbox_info[-1].strip('"')
+        mailbox_name = parse_mailbox_name(mailbox.decode())
+        if not mailbox_name:
+            continue
+
         # Filter criteria
         m = mailbox_name.lower()
         if (
@@ -68,9 +85,10 @@ def get_mailboxes(mail, only_inbox=True):
             or "flagged" in m
         ):
             continue
-        if only_inbox and not mailbox_name.lower().startswith("inbox"):
+        if only_inbox and not m.startswith("inbox"):
             continue
         mailboxes.append(mailbox_name)
+
     print(f"Found {len(mailboxes)} mailboxes: {mailboxes}")
     if len(mailboxes) == 0:
         raise Exception("No mailboxes found!")
