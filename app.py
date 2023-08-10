@@ -31,9 +31,7 @@ def classify_email(email_content, labels, prefix=None):
         )
     if not prefix:
         prefix = ""
-    modified_labels = [
-        label[len(prefix) :] if label.startswith(prefix) else label for label in labels
-    ]
+    modified_labels = [label[len(prefix) :] if label.startswith(prefix) else label for label in labels]
     output = classifier(email_content, modified_labels, multi_label=False)
     label = output["labels"][0]
     if label == "other":
@@ -69,9 +67,7 @@ def extract_text_from_part(part):
 
 def move_email(mail, uid, source_folder, destination_folder, dry_run=False):
     if dry_run:
-        print(
-            f"[DRY RUN] Would move email with UID {uid} from {source_folder} to {destination_folder}"
-        )
+        print(f"[DRY RUN] Would move email with UID {uid} from {source_folder} to {destination_folder}")
         return
 
     # Select the source folder
@@ -164,9 +160,7 @@ def main(args):
         if parsed_email.is_multipart():
             content = extract_text_from_part(parsed_email)
         if content == "":
-            content = parsed_email.get_payload(decode=True).decode(
-                "utf-8", errors="ignore"
-            )
+            content = parsed_email.get_payload(decode=True).decode("utf-8", errors="ignore")
         target_folder = classify_email(content, labels, args.prefix)
         if target_folder == "INBOX":
             continue
@@ -177,10 +171,8 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Classify emails using IMAP and HuggingFace pipeline."
-    )
-    parser.add_argument("username", help="IMAP username")
+    parser = argparse.ArgumentParser(description="Classify emails using IMAP and HuggingFace pipeline.")
+    parser.add_argument("-u", "--username", help="IMAP username")
     parser.add_argument(
         "-s",
         "--hostname",
@@ -201,8 +193,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Securely get the password
+    if not args.username:
+        args.username = os.environ.get("AUTO_EMAIL_CLASSIFIER_USERNAME")
+        if not args.username:
+            args.username = input("IMAP Username: ")
     args.password = os.environ.get("AUTO_EMAIL_CLASSIFIER_PASSWORD")
     if not args.password:
         args.password = getpass(prompt="IMAP Password: ")
-
+    if not args.hostname:
+        args.hostname = os.environ.get("AUTO_EMAIL_CLASSIFIER_HOSTNAME", "localhost")
     main(args)
