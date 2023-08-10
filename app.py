@@ -3,6 +3,7 @@
 import imaplib
 import email
 import argparse
+import os
 import time
 from getpass import getpass
 from transformers import pipeline
@@ -65,6 +66,9 @@ def move_email(mail, uid, source_folder, destination_folder, dry_run=False):
 
     # Select the source folder
     mail.select(source_folder)
+
+    if " " in destination_folder:
+        destination_folder = f'"{destination_folder}"'
 
     # Copy the email to the destination folder
     result, _ = mail.uid("COPY", uid, destination_folder)
@@ -187,6 +191,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Securely get the password
-    args.password = getpass(prompt="IMAP Password: ")
+    args.password = os.environ.get("AUTO_EMAIL_CLASSIFIER_PASSWORD")
+    if not args.password:
+        args.password = getpass(prompt="IMAP Password: ")
 
     main(args)
